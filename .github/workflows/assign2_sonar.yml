@@ -1,0 +1,187 @@
+name: Master branch build and test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Prevent duplicate builds for the same branch, productivity
+concurrency:
+  group: main-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege permissions, security
+permissions:
+  contents: read
+  id-token: write      # oidc
+  attestations: write  # github attestation
+  pull-requests: write # sonarcloud PR inline comments
+  checks: write        # sonarcloud check results on commits
+
+env:
+  JAVA_VERSION: '17'
+  DOCKER_IMAGE: docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo
+
+jobs:
+  #1. Build, test, and package and SonarCloud scan
+  build:
+    name: Build, Test & SonarCloud Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Checkout with full history — SonarCloud needs this for blame
+      # annotations and accurate new-code detection on PRs
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Set up Java with Maven dependency cache
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      # Build + test + JaCoCo coverage + Sonar scan in one Maven command.
+      # Running sonar:sonar after verify ensures the JaCoCo XML report
+      # already exists before Sonar tries to read it.
+      - name: Build, Test and SonarCloud Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mvn -B clean verify sonar:sonar \
+            --no-transfer-progress \
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} \
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+
+      # Poll SonarCloud and fail this job if Quality Gate is not green.
+      # This blocks the docker job from running with bad code.
+      - name: Check SonarCloud Quality Gate
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # Upload build artifact
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
+          retention-days: 7
+
+  #2. — Build and push docker image
+  docker:
+    name: Docker build and push
+    runs-on: ubuntu-latest
+    needs: build   # only runs when build + Quality Gate passes
+    timeout-minutes: 15
+
+    # Not using environment features really, but we can use env level
+    # secrets, restrictions/approvals, protection rules etc
+    environment:
+      name: production
+
+    steps:
+      # Checkout source code
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Download artifacts
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target/
+
+      # Generate docker metadata for tags, which is later used (steps, labels)
+      # Tags:
+      # - latest
+      # - sha-<commit>
+      # - YYYY.MM.DD-<sha>
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+            type=raw,value={{date 'YYYY.MM.DD'}}-{{sha}}
+
+      # Set up docker buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Log in to docker hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Vulnerability scan
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          output: trivy-report.txt
+          exit-code: 0
+          severity: CRITICAL,HIGH
+
+      # Build and push Docker image, reuses previous docker build cache and
+      # saves current. Also includes provenance and sbom.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        id: push
+        with:
+          context: .
+          # platforms: linux/amd64,linux/arm64  # uncomment for multi-platform
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=production
+          cache-to: type=gha,scope=production,mode=max
+          provenance: true
+          sbom: true
+
+      # Generate signed build provenance attestation
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.DOCKER_IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      # Build summary — extended to include SonarCloud link
+      - name: Publish workflow summary
+        run: |
+          {
+            echo "## ✅ Main Release Complete"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Branch | \`${GITHUB_REF_NAME}\` |"
+            echo "| Commit | \`${GITHUB_SHA::7}\` |"
+            echo "| Docker Image | \`${{ env.DOCKER_IMAGE }}\` |"
+            echo "| Tags | \`${{ steps.meta.outputs.tags }}\` |"
+            echo "| SonarCloud | [View Report](https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }}) |"
+            echo ""
+            echo "## 🔒 Trivy Security Scan"
+            echo ""
+            echo '```'
+            cat trivy-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

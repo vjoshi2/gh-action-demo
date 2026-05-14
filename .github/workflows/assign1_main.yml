@@ -20,7 +20,7 @@ permissions:
   attestations: write #github attestation
 
 env:
-  JAVA_VERSION: '25'
+  JAVA_VERSION: '17'
   DOCKER_IMAGE: docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo
 
 jobs:

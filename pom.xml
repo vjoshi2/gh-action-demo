@@ -2,22 +2,38 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>2.7.18</version>
     </parent>
-
     <groupId>com.example</groupId>
     <artifactId>spring-boot-2-hello-world</artifactId>
     <version>1.0.2-SNAPSHOT</version>
-
     <name>spring-boot-2-hello-world</name>
     <description>A simple Spring Boot 2.x app to send hello world message to a user</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <java.version>17</java.version>
+
+        <!-- ── SonarCloud ───────────────────────────────────────────────────
+             These mirror the -D flags in the workflow, but also let you run
+             `mvn sonar:sonar` locally without extra arguments.
+             Replace the placeholder values with your own.                  -->
+        <sonar.projectKey>vjoshi2</sonar.projectKey>
+        <sonar.organization>vjoshi2</sonar.organization>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+
+        <!-- Tell Sonar where JaCoCo writes its XML coverage report -->
+        <sonar.coverage.jacoco.xmlReportPaths>
+            target/site/jacoco/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
+
+        <!-- Exclude boilerplate from analysis (adjust as needed) -->
+        <sonar.exclusions>
+            **/*Application.java,
+            **/generated/**
+        </sonar.exclusions>
     </properties>
 
     <dependencies>
@@ -29,7 +45,6 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -39,9 +54,45 @@
 
     <build>
         <plugins>
+            <!-- ── Spring Boot ─────────────────────────────────────────────── -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- ── JaCoCo ──────────────────────────────────────────────────
+                 Instruments tests and produces the XML report that Sonar reads.
+                 Bound to the `verify` phase so `mvn verify` is enough.      -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <!-- Attaches the JaCoCo agent before tests run -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <!-- Generates XML + HTML report after tests complete -->
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- ── SonarCloud ──────────────────────────────────────────────
+                 Enables `mvn sonar:sonar` goal.
+                 The workflow runs: mvn clean verify sonar:sonar            -->
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>4.0.0.4121</version>
             </plugin>
         </plugins>
     </build>
