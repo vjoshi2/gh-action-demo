@@ -85,7 +85,7 @@ jobs:
   docker:
     name: Docker build and push
     needs: build
-    uses: .github/workflows/assign3_reusable_docker_build.yml
+    uses: ./.github/workflows/assign3_reusable_docker_build.yml
     with:
       docker_image: docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo
       artifact_name: app-jar
