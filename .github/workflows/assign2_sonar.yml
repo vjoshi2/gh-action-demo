@@ -64,11 +64,13 @@ jobs:
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
 
-      # Poll SonarCloud and fail this job if Quality Gate is not green.
+      # Poll sonarCloud and fail this job if quality gate is not green.
       # This blocks the docker job from running with bad code.
       - name: Check SonarCloud Quality Gate
         uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
+        with:
+          scanMetadataReportFile: target/sonar/report-task.txt
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
