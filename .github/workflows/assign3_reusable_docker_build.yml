@@ -22,8 +22,6 @@ on:
     #     type: string
     #     default: 'production'
     secrets:
-      DOCKERHUB_USERNAME:
-        required: true
       DOCKERHUB_TOKEN:
         required: true
     # Outputs passed back to the caller so the summary job can use them
