@@ -21,6 +21,7 @@ permissions:
   checks: write        # sonarcloud check results on commits
   id-token: write
   attestations: write
+  security-events: write
   
 env:
   JAVA_VERSION: '17'
