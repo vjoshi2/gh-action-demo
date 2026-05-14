@@ -19,6 +19,9 @@ permissions:
   contents: read
   pull-requests: write # sonarcloud PR inline comments
   checks: write        # sonarcloud check results on commits
+  id-token: write
+  attestations: write
+  
 
 env:
   JAVA_VERSION: '17'
