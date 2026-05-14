@@ -1,4 +1,4 @@
-name: Assign 3 - Master branch build and test with reusable workflow
+name: Assign 4 - Master branch build and test with reusable workflow
 
 on:
 #   push:
@@ -23,24 +23,19 @@ permissions:
   id-token: write
   attestations: write
   
-
 env:
   JAVA_VERSION: '17'
 
 jobs:
-  #1. Build, test, and package and SonarCloud scan
+  #1. Build, test, codeql and package
   build:
-    name: Build, Test & SonarCloud Scan
+    name: Build and Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      # Checkout with full history — SonarCloud needs this for blame
-      # annotations and accurate new-code detection on PRs
       - name: Checkout source code
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       # Set up Java with Maven dependency cache
       - name: Set up JDK ${{ env.JAVA_VERSION }}
@@ -49,33 +44,25 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
           cache: maven
+      
+      # Initialize CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
 
-      # Build + test + JaCoCo coverage + Sonar scan in one Maven command.
-      # Running sonar:sonar after verify ensures the JaCoCo XML report
-      # already exists before Sonar tries to read it.
-      - name: Build, Test and SonarCloud Scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: Use security-and-quality rules
+          queries: security-and-quality
+
+      #Build, test, package, verify with debug to see hidden failures
+      - name: Build and run tests
         run: |
           set -euo pipefail
-          mvn -B clean verify sonar:sonar \
-            --no-transfer-progress \
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} \
-            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
-            -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-            -Dsonar.scm.disabled=true
+          mvn -B clean verify --no-transfer-progress
 
-      # Poll SonarCloud and fail this job if Quality Gate is not green.
-      # This blocks the docker job from running with bad code.
-      - name: Check SonarCloud Quality Gate
-        uses: sonarsource/sonarqube-quality-gate-action@master
-        timeout-minutes: 5
-        with:
-          scanMetadataReportFile: target/sonar/report-task.txt
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # Perform CodeQL Analysis
+      - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v4
 
       # Upload build artifact — consumed by the reusable docker workflow
       - name: Upload build artifact
@@ -88,7 +75,9 @@ jobs:
   #2. Build and push docker image with reusable workflow.
   docker:
     name: Docker build and push
-    needs: build
+    needs: 
+      - build
+      - codeql
     uses: ./.github/workflows/assign3_reusable_docker_build.yml
     with:
       docker_image: docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo
@@ -116,7 +105,6 @@ jobs:
             echo "| Commit | \`${GITHUB_SHA::7}\` |"
             echo "| Docker Image | \`docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo\` |"
             echo "| Tags | \`${{ needs.docker.outputs.image_tags }}\` |"
-            echo "| SonarCloud | [View Report](https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }}) |"
             echo ""
             echo "## 🔒 Trivy Security Scan"
             echo ""
