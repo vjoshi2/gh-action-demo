@@ -110,6 +110,7 @@ jobs:
           scan-type: fs
           scan-ref: .
           format: table
+          output: trivy-report.txt
           exit-code: 0
           severity: CRITICAL,HIGH
 
@@ -143,4 +144,11 @@ jobs:
             echo "| Docker Image | \`${{ env.DOCKER_IMAGE }}\` |"
             echo "| Tags |"
             echo "\`${{ steps.meta.outputs.tags }}\` |"
+            echo ""
+            echo "## 🔒 Trivy Security Scan"
+            echo ""
+
+            echo '```'
+            cat trivy-report.txt
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
