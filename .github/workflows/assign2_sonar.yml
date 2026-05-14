@@ -3,10 +3,10 @@ name: Master branch build and test
 on:
   push:
     branches:
-      - main
+      - master
   pull_request:
     branches:
-      - main
+      - master
 
 # Prevent duplicate builds for the same branch, productivity
 concurrency:
@@ -62,10 +62,7 @@ jobs:
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} \
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-            -Dsonar.scm.revision=${{ github.sha }} \
-            -Dsonar.branch.name=${{ github.ref_name }} \
-            -Dsonar.scm.disabled=true
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
 
       # Poll sonarCloud and fail this job if quality gate is not green.
       # This blocks the docker job from running with bad code.
@@ -79,7 +76,7 @@ jobs:
 
       # Upload build artifact
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-jar
           path: target/*.jar
