@@ -1,10 +1,11 @@
 name: Feature branch build and test
 
 on:
-  push:
-    branches:
-      - 'feature/**'
-      - 'feat/**'
+  # push:
+  #   branches:
+  #     - 'feature/**'
+  #     - 'feat/**'
+  workflow_dispatch:
 
 # Prevent duplicate builds for the same branch, productivity
 concurrency:

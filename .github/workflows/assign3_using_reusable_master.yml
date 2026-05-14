@@ -1,0 +1,122 @@
+name: Master branch build and test with reusable workflow
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+# Prevent duplicate builds for the same branch, productivity
+concurrency:
+  group: master-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege permissions, security
+# Note: id-token, attestations permissions are declared inside the reusable workflow
+permissions:
+  contents: read
+  pull-requests: write # sonarcloud PR inline comments
+  checks: write        # sonarcloud check results on commits
+
+env:
+  JAVA_VERSION: '17'
+
+jobs:
+  #1. Build, test, and package and SonarCloud scan
+  build:
+    name: Build, Test & SonarCloud Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Checkout with full history — SonarCloud needs this for blame
+      # annotations and accurate new-code detection on PRs
+      - name: Checkout source code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Set up Java with Maven dependency cache
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      # Build + test + JaCoCo coverage + Sonar scan in one Maven command.
+      # Running sonar:sonar after verify ensures the JaCoCo XML report
+      # already exists before Sonar tries to read it.
+      - name: Build, Test and SonarCloud Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mvn -B clean verify sonar:sonar \
+            --no-transfer-progress \
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }} \
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+            -Dsonar.scm.disabled=true
+
+      # Poll SonarCloud and fail this job if Quality Gate is not green.
+      # This blocks the docker job from running with bad code.
+      - name: Check SonarCloud Quality Gate
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        with:
+          scanMetadataReportFile: target/sonar/report-task.txt
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # Upload build artifact — consumed by the reusable docker workflow
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-jar
+          path: target/*.jar
+          retention-days: 7
+
+  #2. Build and push docker image with reusable workflow.
+  docker:
+    name: Docker build and push
+    needs: build
+    uses: .github/workflows/assign3_reusable_docker_build.yml
+    with:
+      docker_image: docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo
+      artifact_name: app-jar
+      dockerhub_username: ${{ vars.DOCKERHUB_USERNAME }}
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  #3. Publish workflow summary.
+  summary:
+    name: Publish workflow summary
+    runs-on: ubuntu-latest
+    needs: docker
+    if: always()   # run even if docker job failed, so we always get a summary
+
+    steps:
+      - name: Publish workflow summary
+        run: |
+          {
+            echo "## ✅ Release Complete"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Branch | \`${GITHUB_REF_NAME}\` |"
+            echo "| Commit | \`${GITHUB_SHA::7}\` |"
+            echo "| Docker Image | \`docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo\` |"
+            echo "| Tags | \`${{ needs.docker.outputs.image_tags }}\` |"
+            echo "| SonarCloud | [View Report](https://sonarcloud.io/project/overview?id=${{ vars.SONAR_PROJECT_KEY }}) |"
+            echo ""
+            echo "## 🔒 Trivy Security Scan"
+            echo ""
+            echo '```'
+            echo "${{ needs.docker.outputs.trivy_report }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

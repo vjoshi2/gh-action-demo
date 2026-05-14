@@ -1,12 +1,13 @@
 name: Master branch build and test
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
+  # push:
+  #   branches:
+  #     - master
+  # pull_request:
+  #   branches:
+  #     - master
+  workflow_dispatch:
 
 # Prevent duplicate builds for the same branch, productivity
 concurrency:
@@ -82,7 +83,7 @@ jobs:
           path: target/*.jar
           retention-days: 7
 
-  #2. — Build and push docker image
+  #2. Build and push docker image
   docker:
     name: Docker build and push
     runs-on: ubuntu-latest
