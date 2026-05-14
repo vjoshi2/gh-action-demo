@@ -1,0 +1,137 @@
+name: Reusable docker build and push
+
+on:
+  workflow_call:
+    inputs:
+      dockerhub_username:
+        description: 'Docker hub username'
+        required: true
+        type: string
+      docker_image:
+        description: 'docker image name'
+        required: true
+        type: string
+      artifact_name:
+        description: 'build artifact name, optional'
+        required: false
+        type: string
+        default: 'app-jar'
+    #   environment:
+    #     description: 'environment, if we are using, optional'
+    #     required: false
+    #     type: string
+    #     default: 'production'
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+    # Outputs passed back to the caller so the summary job can use them
+    outputs:
+      image_tags:
+        description: 'List of Docker tags'
+        value: ${{ jobs.docker.outputs.image_tags }}
+      trivy_report:
+        description: 'Trivy vulnerability scan report'
+        value: ${{ jobs.docker.outputs.trivy_report }}
+
+jobs:
+  docker:
+    name: Docker build and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Permissions needed for OIDC attestation
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    # Expose values that the caller's summary job needs
+    outputs:
+      image_tags:   ${{ steps.meta.outputs.tags }}
+      trivy_report: ${{ steps.trivy_read.outputs.report }}
+
+    steps:
+      # Checkout source code (needed for Dockerfile)
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      # Download the JAR built by the caller workflow
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: target/
+          # if-no-artifact-found: ignore #we can use it if we are not setting default and want to continue the workflow.
+
+      # Generate docker metadata for tags
+      # Tags:
+      # - latest
+      # - sha-<commit>
+      # - YYYY.MM.DD-<sha>
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ inputs.docker_image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+            type=raw,value={{date 'YYYY.MM.DD'}}-{{sha}}
+
+      # Set up docker buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Log in to docker hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ inputs.dockerhub_username }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Vulnerability scan — writes trivy-report.txt
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          output: trivy-report.txt
+          exit-code: 0
+          severity: CRITICAL,HIGH
+
+      # Read trivy report into a step output so it survives across jobs
+      - name: Read Trivy report into output
+        id: trivy_read
+        run: |
+          # Use a delimiter to safely handle multiline content
+          {
+            echo "report<<TRIVY_EOF"
+            cat trivy-report.txt
+            echo "TRIVY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Build and push Docker image with cache, provenance and sbom
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        id: push
+        with:
+          context: .
+          # platforms: linux/amd64,linux/arm64  # uncomment for multi-platform
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=production
+          cache-to: type=gha,scope=production,mode=max
+          provenance: true
+          sbom: true
+
+      # Generate signed build provenance attestation
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ inputs.docker_image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

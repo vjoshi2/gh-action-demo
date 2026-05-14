@@ -1,14 +1,15 @@
 name: Master branch build and test
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
-    branches:
-      - main
-      - master
+  # push:
+  #   branches:
+  #     - main
+  #     - master
+  # pull_request:
+  #   branches:
+  #     - main
+  #     - master
+  workflow_dispatch:
 
 #Prevent duplicate builds for the same branch, productivity
 concurrency:
