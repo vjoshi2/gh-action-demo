@@ -23,7 +23,6 @@
         <sonar.projectKey>vjoshi2</sonar.projectKey>
         <sonar.organization>vjoshi2</sonar.organization>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
-        <sonar.branch.name>main</sonar.branch.name>
         <sonar.sources>src/main/java</sonar.sources>
         <sonar.tests>src/test/java</sonar.tests>
 
