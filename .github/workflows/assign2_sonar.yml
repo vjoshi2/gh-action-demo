@@ -63,8 +63,9 @@ jobs:
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-            -Dsonar.scm.revision=${{ github.sha }} \ 
-            -Dsonar.branch.name=${{ github.ref_name }}
+            -Dsonar.scm.revision=${{ github.sha }} \
+            -Dsonar.branch.name=${{ github.ref_name }} \
+            -Dsonar.scm.disabled=true
 
       # Poll sonarCloud and fail this job if quality gate is not green.
       # This blocks the docker job from running with bad code.
