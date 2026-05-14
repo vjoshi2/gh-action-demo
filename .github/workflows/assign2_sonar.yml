@@ -36,13 +36,13 @@ jobs:
       # Checkout with full history — SonarCloud needs this for blame
       # annotations and accurate new-code detection on PRs
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       # Set up Java with Maven dependency cache
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
@@ -100,11 +100,11 @@ jobs:
     steps:
       # Checkout source code
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Download artifacts
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: app-jar
           path: target/
@@ -116,7 +116,7 @@ jobs:
       # - YYYY.MM.DD-<sha>
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
@@ -126,18 +126,18 @@ jobs:
 
       # Set up docker buildx
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Log in to docker hub
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Vulnerability scan
       - name: Scan Docker image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -149,7 +149,7 @@ jobs:
       # Build and push Docker image, reuses previous docker build cache and
       # saves current. Also includes provenance and sbom.
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         id: push
         with:
           context: .
@@ -164,7 +164,7 @@ jobs:
 
       # Generate signed build provenance attestation
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ env.DOCKER_IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
