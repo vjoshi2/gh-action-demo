@@ -1,4 +1,4 @@
-name: Master branch build and test
+name: Assign 2 - Master branch build and test with sonar
 
 on:
   # push:
@@ -11,7 +11,7 @@ on:
 
 # Prevent duplicate builds for the same branch, productivity
 concurrency:
-  group: main-${{ github.ref }}
+  group: master-${{ github.ref }}
   cancel-in-progress: true
 
 # Least-privilege permissions, security

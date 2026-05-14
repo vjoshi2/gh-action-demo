@@ -1,4 +1,4 @@
-name: Feature branch build and test
+name: Assign 1a - Feature branch build and test
 
 on:
   # push:

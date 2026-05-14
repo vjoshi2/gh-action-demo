@@ -1,4 +1,4 @@
-name: Reusable docker build and push
+name: Assign 3 - Reusable docker build and push
 
 on:
   workflow_call:
