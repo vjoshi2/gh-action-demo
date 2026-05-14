@@ -18,7 +18,7 @@ permissions:
 
 env:
   JAVA_VERSION: '25'
-  DOCKER_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/gh-action-demo
+  DOCKER_IMAGE: docker.io/${{ vars.DOCKERHUB_USERNAME }}/gh-action-demo
 
 jobs:
   build-and-push:
