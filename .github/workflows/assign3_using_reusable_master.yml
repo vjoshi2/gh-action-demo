@@ -1,13 +1,14 @@
 name: Assign 3 - Master branch build and test with reusable workflow
 
 on:
+  workflow_dispatch:
 #   push:
 #     branches:
 #       - master
 #   pull_request:
 #     branches:
 #       - master
-workflow_dispatch:
+
 
 # Prevent duplicate builds for the same branch, productivity
 concurrency:
