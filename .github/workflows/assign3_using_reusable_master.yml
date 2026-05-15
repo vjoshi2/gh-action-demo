@@ -1,4 +1,4 @@
-name: Assign 3 - Master branch build and test with reusable workflow
+name: Assign 3 - Build and test with reusable workflow
 
 on:
   workflow_dispatch:
