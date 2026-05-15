@@ -1,4 +1,4 @@
-name: Assign 4 - Master branch build and test with reusable workflow
+name: Assign 4 - Master branch build and test with codeql - separate job
 
 on:
   push:

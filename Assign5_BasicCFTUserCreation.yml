@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CloudFormation template to create:
+  - IAM Group: Contractors
+  - IAM User
+  - Policies for EC2, S3, and EKS access
+  - Add user to Contractors group
+
+Parameters:
+  IAMUserName:
+    Type: String
+    Description: Name of the IAM User to create
+
+Resources:
+
+  # IAM Group
+  ContractorsGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: Contractors
+      ManagedPolicyArns:
+        # AWS Managed Policies
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonEKSReadOnlyAccess
+
+  # Optional Custom Inline Policy
+  ContractorsCustomPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ContractorsCustomPolicy
+      Groups:
+        - !Ref ContractorsGroup
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+
+          # EC2 Permissions
+          - Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeVolumes
+              - ec2:DescribeSnapshots
+              - ec2:DescribeSecurityGroups
+            Resource: "*"
+
+          # S3 Permissions
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetObject
+            Resource:
+              - arn:aws:s3:::*
+              - arn:aws:s3:::*/*
+
+          # EKS Permissions
+          - Effect: Allow
+            Action:
+              - eks:ListClusters
+              - eks:DescribeCluster
+            Resource: "*"
+
+  # IAM User
+  ContractorUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Ref IAMUserName
+      Groups:
+        - !Ref ContractorsGroup
+
+Outputs:
+  IAMUser:
+    Description: Created IAM User
+    Value: !Ref ContractorUser
+
+  IAMGroup:
+    Description: IAM Group Name
+    Value: !Ref ContractorsGroup

@@ -1,4 +1,4 @@
-name: Assign 4 - Master branch build and test with reusable workflow
+name: Assign 4 - Build and test with codeql - integrated.
 
 on:
    workflow_dispatch:

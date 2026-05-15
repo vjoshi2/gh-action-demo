@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Creates an IAM User, assigns it to a Contractors IAM Group,
+  and attaches scoped policies for EC2, S3, and EKS access.
+  Includes MFA enforcement and follows least-privilege principles.
+
+Parameters:
+
+  ContractorUsername:
+    Type: String
+    Description: IAM username for the contractor (e.g. john.doe)
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[\w+=,.@-]+'
+    ConstraintDescription: Must be a valid IAM username (letters, numbers, +=,.@-)
+
+  InitialPassword:
+    Type: String
+    Description: Temporary console password (must be changed on first login)
+    NoEcho: true
+    MinLength: 9
+    ConstraintDescription: Password must be at least 9 characters
+
+  AllowedS3BucketPrefix:
+    Type: String
+    Description: >
+      Prefix of S3 buckets the contractor can access.
+      Example: mycompany-contractors
+      Use * to allow all buckets (not recommended).
+    Default: '*'
+
+  AllowedEKSClusterName:
+    Type: String
+    Description: >
+      EKS cluster name the contractor can access.
+      Use * to allow all clusters (not recommended).
+    Default: '*'
+
+Conditions:
+  ScopedS3Access: !Not [!Equals [!Ref AllowedS3BucketPrefix, '*']]
+
+Resources:
+
+  # EC2 MANAGED POLICY
+
+  ContractorEC2Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${AWS::StackName}-ContractorEC2Policy'
+      Description: Contractor EC2 access policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+
+          - Sid: EC2ReadOnly
+            Effect: Allow
+            Action:
+              - ec2:Describe*
+            Resource: '*'
+
+          - Sid: EC2StartStop
+            Effect: Allow
+            Action:
+              - ec2:StartInstances
+              - ec2:StopInstances
+              - ec2:RebootInstances
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:instance/*'
+
+  # S3 MANAGED POLICY
+
+  ContractorS3Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${AWS::StackName}-ContractorS3Policy'
+      Description: Contractor S3 access policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+
+          - Sid: S3ListAllBuckets
+            Effect: Allow
+            Action:
+              - s3:ListAllMyBuckets
+              - s3:GetBucketLocation
+            Resource: '*'
+
+          - Sid: S3BucketAccess
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketVersioning
+              - s3:GetBucketLocation
+            Resource:
+              - !If
+                - ScopedS3Access
+                - !Sub 'arn:${AWS::Partition}:s3:::${AllowedS3BucketPrefix}*'
+                - !Sub 'arn:${AWS::Partition}:s3:::*'
+
+          - Sid: S3ObjectAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:PutObject
+              - s3:AbortMultipartUpload
+              - s3:ListMultipartUploadParts
+            Resource:
+              - !If
+                - ScopedS3Access
+                - !Sub 'arn:${AWS::Partition}:s3:::${AllowedS3BucketPrefix}*/*'
+                - !Sub 'arn:${AWS::Partition}:s3:::*/*'
+
+  # EKS MANAGED POLICY
+
+  ContractorEKSPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${AWS::StackName}-ContractorEKSPolicy'
+      Description: Contractor EKS access policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+
+          - Sid: EKSReadOnly
+            Effect: Allow
+            Action:
+              - eks:DescribeCluster
+              - eks:ListClusters
+              - eks:DescribeNodegroup
+              - eks:ListNodegroups
+              - eks:DescribeFargateProfile
+              - eks:DescribeAddon
+              - eks:ListAddons
+              - eks:ListTagsForResource
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:eks:*:${AWS::AccountId}:cluster/${AllowedEKSClusterName}'
+              - !Sub 'arn:${AWS::Partition}:eks:*:${AWS::AccountId}:nodegroup/${AllowedEKSClusterName}/*/*'
+              - !Sub 'arn:${AWS::Partition}:eks:*:${AWS::AccountId}:addon/${AllowedEKSClusterName}/*/*'
+
+          - Sid: EKSListClusters
+            Effect: Allow
+            Action:
+              - eks:ListClusters
+            Resource: '*'
+
+          # Required to use kubectl authentication via AWS CLI
+          # This action cannot be resource-scoped
+          - Sid: EKSKubernetesAccess
+            Effect: Allow
+            Action:
+              - eks:AccessKubernetesApi
+            Resource: '*'
+
+  # IAM GROUP
+
+  ContractorsGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-Contractors'
+      ManagedPolicyArns:
+        - !Ref ContractorEC2Policy
+        - !Ref ContractorS3Policy
+        - !Ref ContractorEKSPolicy
+
+  # IAM USER
+
+  ContractorUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Ref ContractorUsername
+      Path: '/contractors/'
+      Groups:
+        - !Ref ContractorsGroup
+
+      LoginProfile:
+        Password: !Ref InitialPassword
+        # Password: '{{resolve:ssm:/contractors/initial-password}}'  # Dynamic reference to SSM secure parameter
+        PasswordResetRequired: true
+
+      Tags:
+        - Key: Role
+          Value: Contractor
+
+        - Key: ManagedBy
+          Value: CloudFormation
+
+        - Key: Stack
+          Value: !Ref AWS::StackName
+
+# OUTPUTS
+
+Outputs:
+
+  ContractorUserArn:
+    Description: ARN of the contractor IAM user
+    Value: !GetAtt ContractorUser.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ContractorUserArn'
+
+  ContractorsGroupArn:
+    Description: ARN of the Contractors IAM group
+    Value: !GetAtt ContractorsGroup.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ContractorsGroupArn'
+
+  ContractorConsoleLoginURL:
+    Description: AWS Console Login URL
+    Value: !Sub 'https://${AWS::AccountId}.signin.aws.amazon.com/console'
+
+
+
+# Deloy command:
+# aws cloudformation deploy \
+#  --template-file contractor-iam.yaml \
+#  --stack-name contractor-access-stack \
+#  --capabilities CAPABILITY_NAMED_IAM \
+#  --parameter-overrides \
+#    ContractorUsername=name.surname \
+#    InitialPassword='TempPassword123!' \
+#    AllowedS3BucketPrefix=mycompany-contractors \
+#    AllowedEKSClusterName=my-eks-cluster

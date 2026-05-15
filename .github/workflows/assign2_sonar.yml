@@ -1,4 +1,4 @@
-name: Assign 2 - Master branch build and test with sonar
+name: Assign 2 - Build and test with Sonar
 
 on:
   # push:
